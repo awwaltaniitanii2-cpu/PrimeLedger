@@ -1,0 +1,310 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  username  String   @unique
+  password  String
+  role      Role     @default(CLIENT)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client Client?
+}
+
+model Client {
+  id        String        @id @default(cuid())
+  userId    String        @unique
+  phone     String?
+  country   String?
+  status    AccountStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accounts      TradingAccount[]
+  trades        Trade[]
+  transactions  Transaction[]
+  deposits      Deposit[]
+  withdrawals   Withdrawal[]
+  invites       InviteLink[]
+  investments   ClientInvestment[]
+  subscriptions ProductSubscription[]
+}
+
+model TradingAccount {
+  id          String        @id @default(cuid())
+  clientId    String
+  accountId   String        @unique
+  accountType String
+  balance     Decimal       @default(0)
+  profitLoss  Decimal       @default(0)
+  riskProfile String?
+  status      AccountStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  client       Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  trades       Trade[]
+  transactions Transaction[]
+}
+
+model Trade {
+  id         String         @id @default(cuid())
+  clientId   String
+  accountId  String
+  symbol     String
+  assetClass AssetClass
+  side       TradeSide
+  orderType  TradeOrderType @default(MARKET)
+  status     TradeStatus    @default(OPEN)
+
+  quantity   Decimal
+  entryPrice Decimal?
+  exitPrice  Decimal?
+  stopLoss   Decimal?
+  takeProfit Decimal?
+  fees       Decimal        @default(0)
+
+  realizedProfitLoss   Decimal @default(0)
+  currentPrice         Decimal?
+  unrealizedProfitLoss Decimal @default(0)
+  priceUpdatedAt       DateTime?
+
+  openedAt    DateTime?
+  closedAt    DateTime?
+  cancelledAt DateTime?
+  deletedAt   DateTime?
+
+  openedBy String?
+  closedBy String?
+  note     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client  Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  account TradingAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([accountId])
+  @@index([status])
+  @@index([symbol])
+  @@index([deletedAt])
+}
+
+model Transaction {
+  id        String          @id @default(cuid())
+  clientId  String
+  accountId String?
+  type      TransactionType
+  amount    Decimal
+  status    RequestStatus   @default(APPROVED)
+  note      String?
+  createdAt DateTime        @default(now())
+
+  client  Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  account TradingAccount? @relation(fields: [accountId], references: [id])
+}
+
+model Deposit {
+  id        String        @id @default(cuid())
+  clientId  String
+  amount    Decimal
+  method    String?
+  status    RequestStatus @default(PENDING)
+  note      String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+model Withdrawal {
+  id        String        @id @default(cuid())
+  clientId  String
+  amount    Decimal
+  method    String?
+  status    RequestStatus @default(PENDING)
+  note      String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+model InviteLink {
+  id        String    @id @default(cuid())
+  clientId  String
+  token     String    @unique
+  used      Boolean   @default(false)
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actor     String
+  action    String
+  target    String?
+  details   String?
+  createdAt DateTime @default(now())
+}
+
+model Investment {
+  id            String           @id @default(cuid())
+  title         String
+  description   String
+  minimumAmount Decimal
+  expectedROI   Decimal
+  durationDays  Int
+  totalCapacity Decimal
+  investedTotal Decimal          @default(0)
+  status        InvestmentStatus @default(OPEN)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  investments ClientInvestment[]
+}
+
+model ClientInvestment {
+  id            String   @id @default(cuid())
+  clientId      String
+  investmentId  String
+  amount        Decimal
+  expectedValue Decimal
+  createdAt     DateTime @default(now())
+
+  client     Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  investment Investment @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, investmentId])
+}
+
+model Product {
+  id             String        @id @default(cuid())
+  name           String
+  description    String
+  type           ProductType
+  currency       String        @default("USD")
+  minimumAmount  Decimal
+  maximumAmount  Decimal?
+  interestRate   Decimal
+  durationDays   Int
+  totalCapacity  Decimal?
+  investedTotal  Decimal       @default(0)
+  allowEarlyExit Boolean       @default(false)
+  status         ProductStatus @default(ACTIVE)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  subscriptions ProductSubscription[]
+}
+
+model ProductSubscription {
+  id            String                    @id @default(cuid())
+  clientId      String
+  productId     String
+  amount        Decimal
+  expectedValue Decimal
+  startDate     DateTime                  @default(now())
+  endDate       DateTime
+  status        ProductSubscriptionStatus @default(ACTIVE)
+  createdAt     DateTime                  @default(now())
+
+  client  Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([productId])
+  @@index([status])
+}
+
+enum Role {
+  ADMIN
+  CLIENT
+}
+
+enum AccountStatus {
+  ACTIVE
+  REVIEW
+  SUSPENDED
+  CLOSED
+}
+
+enum AssetClass {
+  CRYPTO
+  STOCK
+  FOREX
+  COMMODITY
+  INDEX
+  ETF
+  FUTURE
+  OTHER
+}
+
+enum TradeSide {
+  BUY
+  SELL
+}
+
+enum TradeOrderType {
+  MARKET
+  LIMIT
+  STOP
+}
+
+enum TradeStatus {
+  PENDING
+  OPEN
+  CLOSED
+  CANCELLED
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  PROFIT
+  LOSS
+  ADJUSTMENT
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum InvestmentStatus {
+  OPEN
+  CLOSED
+  COMPLETED
+}
+
+enum ProductType {
+  SAVINGS
+  STAKING
+}
+
+enum ProductStatus {
+  ACTIVE
+  DISABLED
+  CLOSED
+}
+
+enum ProductSubscriptionStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
